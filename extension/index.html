@@ -9,6 +9,7 @@
     h1 { color: green; }
     #status { font-size: 18px; font-weight: bold; margin: 15px 0; }
     #qr { margin-top: 20px; text-align: center; }
+    canvas { border: 2px solid green; border-radius: 10px; }
   </style>
   <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
@@ -16,32 +17,42 @@
   <h1>🇰🇪 Kenya eTIMS Extension Loaded!</h1>
   <p>Congratulations – your extension is working inside Manager.io!</p>
   <div id="status">Checking connection to Manager.io...</div>
+  
   <div id="qr">
+    <p><strong>Test QR Code (real KRA one coming soon)</strong></p>
     <canvas id="qrcode-canvas"></canvas>
-    <p>Test QR Code (real KRA one coming next)</p>
   </div>
 
   <script>
-    // Generate a test QR code immediately
+    // Always generate the test QR code – big and visible
     QRCode.toCanvas(document.getElementById('qrcode-canvas'), 
-      'KRA eTIMS Verified Invoice\nControl Number: TEST-123456\nDate: 2026-01-03\nAmount: KES 10,000', 
-      { width: 200 }, 
-      (error) => { if (error) console.error(error); }
+      'KRA eTIMS Test Invoice\nControl Number: TEST-2026-001\nDate: January 03, 2026\nAmount: KES 15,000\nVerified by Extension', 
+      { width: 250, color: { dark: '#000000', light: '#FFFFFF' } }, 
+      (error) => {
+        if (error) {
+          document.getElementById('qr').innerHTML += '<p style="color:red;">QR Error – check browser console</p>';
+        } else {
+          console.log('Test QR generated successfully!');
+        }
+      }
     );
 
-    // Check for Manager.io connection (context)
-    function checkContext() {
-      if (window.managerAppContext) {
+    // Check for Manager.io connection (sent via postMessage)
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'manager-context') {
+        window.managerAppContext = event.data.payload;
         document.getElementById('status').innerHTML = 
           '<span style="color:green;">✅ Connected to Manager.io!</span><br>'
-          + 'Business ID: ' + window.managerAppContext.businessId;
-      } else {
-        document.getElementById('status').innerHTML = 
-          '⏳ Waiting for connection... (refresh invoice if stuck)';
-        setTimeout(checkContext, 1000); // Check again in 1 second
+          + 'Business ID: ' + window.managerAppContext.businessId + '<br>'
+          + 'Ready for real eTIMS transmission';
       }
+    });
+
+    // Also check if context is already there
+    if (window.managerAppContext) {
+      document.getElementById('status').innerHTML = 
+        '<span style="color:green;">✅ Connected!</span> Business ID: ' + window.managerAppContext.businessId;
     }
-    checkContext();
   </script>
 </body>
 </html>
