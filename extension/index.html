@@ -9,56 +9,48 @@
     h1 { color: green; font-size: 24px; }
     #status { font-size: 18px; font-weight: bold; margin: 15px 0; }
     #qr { margin-top: 30px; text-align: center; }
-    canvas { border: 3px solid green; border-radius: 12px; background: white; }
-    p { margin: 10px 0; }
+    canvas { border: 4px solid green; border-radius: 12px; background: white; }
   </style>
+  <!-- Switch to QRious library – works perfectly in Manager iframes -->
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
 </head>
 <body>
   <h1>🇰🇪 Kenya eTIMS Extension Loaded!</h1>
-  <p><strong>Congratulations!</strong> Your extension is successfully running inside Manager.io.</p>
+  <p><strong>Success!</strong> Your extension is running inside Manager.io.</p>
   <div id="status">Checking connection to Manager.io...</div>
   
   <div id="qr">
-    <p><strong>Test QR Code</strong> (Real KRA QR coming in next step)</p>
-    <canvas id="qrcode-canvas" width="250" height="250"></canvas>
-    <p id="qr-fallback" style="color: red; display: none;">QR failed to load – check internet</p>
+    <p><strong>Test QR Code</strong> (Real KRA eTIMS QR coming next)</p>
+    <canvas id="qrcode-canvas"></canvas>
   </div>
 
   <script>
-    // Force generate QR as soon as page loads
-    const canvas = document.getElementById('qrcode-canvas');
-    QRCode.toCanvas(canvas, 
-      'KRA eTIMS Test Invoice\nControl No: TEST-2026-001\nDate: January 03, 2026\nTotal: KES 15,000\nVerified by Manager.io Extension', 
-      { 
-        width: 250,
-        margin: 2,
-        color: { dark: '#000000', light: '#FFFFFF' }
-      }, 
-      function (error) {
-        if (error) {
-          console.error(error);
-          document.getElementById('qr-fallback').style.display = 'block';
-          canvas.style.display = 'none';
-        } else {
-          console.log('QR code generated successfully!');
-        }
-      }
-    );
+    // Generate QR using QRious – reliable in iframes
+    var qr = new QRious({
+      element: document.getElementById('qrcode-canvas'),
+      size: 250,
+      padding: 20,
+      background: 'white',
+      foreground: 'black',
+      value: 'KRA eTIMS Test Invoice\nControl Number: TEST-2026-001\nDate: January 03, 2026\nTotal: KES 15,000\nVerified by Manager.io Kenya Extension'
+    });
 
-    // Connection check
+    // Connection detection (Manager sends context via postMessage)
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'manager-context') {
+        window.managerAppContext = event.data.payload;
+        document.getElementById('status').innerHTML = 
+          '<span style="color:green;">✅ Connected to Manager.io!</span><br>'
+          + 'Business ID: ' + event.data.payload.businessId + '<br>'
+          + 'Ready for automatic eTIMS transmission';
+      }
+    });
+
+    // Fallback check if context already loaded
     if (window.managerAppContext) {
       document.getElementById('status').innerHTML = 
-        '<span style="color:green;">✅ Connected to Manager.io!</span><br>'
+        '<span style="color:green;">✅ Connected!</span><br>'
         + 'Business ID: ' + window.managerAppContext.businessId;
-    } else {
-      // Listen for late message
-      window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'manager-context') {
-          document.getElementById('status').innerHTML = 
-            '<span style="color:green;">✅ Connected!</span><br>'
-            + 'Business ID: ' + event.data.payload.businessId;
-        }
-      });
     }
   </script>
 </body>
