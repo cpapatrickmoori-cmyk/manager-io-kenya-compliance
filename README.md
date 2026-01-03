@@ -1,10 +1,5 @@
 # manager-io-kenya-compliance
 Kenya eTIMS integration extension for Manager.io – Real-time KRA compliance with QR codes and invoice transmission and general compliance with accounting requirements in Kenya
-# Manager.io Kenya Compliance Extension
-
-# Manager.io Kenya eTIMS Compliance Extension
-
-Open-source extension for real-time KRA eTIMS compliance in Kenya.
 
 ## Overview
 This extension adds mandatory Kenya Revenue Authority (KRA) eTIMS features directly into Manager.io:
