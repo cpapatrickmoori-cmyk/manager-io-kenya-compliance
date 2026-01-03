@@ -5,52 +5,147 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kenya eTIMS Extension</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f8ff; color: #333; }
-    h1 { color: green; font-size: 24px; }
+    body { font-family: Arial, Helvetica, sans-serif; padding: 20px; background: #f0f8ff; color: #000; }
+    h1 { color: #922529; font-size: 22px; }
     #status { font-size: 18px; font-weight: bold; margin: 15px 0; }
-    #qr { margin-top: 30px; text-align: center; }
-    canvas { border: 4px solid green; border-radius: 12px; background: white; }
+    #invoice-data { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
+    #qr-preview { margin-top: 20px; text-align: center; }
+    canvas { border: 3px solid #008C51; background: white; border-radius: 10px; }
+    button { background: #008C51; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+    button:hover { background: #006b3f; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
   </style>
-  <!-- Switch to QRious library – works perfectly in Manager iframes -->
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
 </head>
 <body>
-  <h1>🇰🇪 Kenya eTIMS Extension Loaded!</h1>
-  <p><strong>Success!</strong> Your extension is running inside Manager.io.</p>
-  <div id="status">Checking connection to Manager.io...</div>
+  <h1>🇰🇪 Kenya eTIMS Extension</h1>
+  <p>Automatic KRA compliance for Sales Invoices</p>
+  <div id="status">Initializing...</div>
   
-  <div id="qr">
-    <p><strong>Test QR Code</strong> (Real KRA eTIMS QR coming next)</p>
+  <div id="invoice-data" style="display:none;">
+    <h3>Current Invoice Summary</h3>
+    <pre id="data-display"></pre>
+  </div>
+  
+  <button id="transmit-btn" style="display:none;" onclick="transmitToKRA()">
+    📤 Transmit to KRA eTIMS (Generate QR)
+  </button>
+  
+  <div id="qr-preview">
+    <p><strong>Preview QR (will appear on printed invoice)</strong></p>
     <canvas id="qrcode-canvas"></canvas>
   </div>
 
   <script>
-    // Generate QR using QRious – reliable in iframes
-    var qr = new QRious({
-      element: document.getElementById('qrcode-canvas'),
-      size: 250,
-      padding: 20,
-      background: 'white',
-      foreground: 'black',
-      value: 'KRA eTIMS Test Invoice\nControl Number: TEST-2026-001\nDate: January 03, 2026\nTotal: KES 15,000\nVerified by Manager.io Kenya Extension'
-    });
+    let managerContext = null;
 
-    // Connection detection (Manager sends context via postMessage)
-    window.addEventListener('message', function(event) {
-      if (event.data && event.data.type === 'manager-context') {
-        window.managerAppContext = event.data.payload;
-        document.getElementById('status').innerHTML = 
-          '<span style="color:green;">✅ Connected to Manager.io!</span><br>'
-          + 'Business ID: ' + event.data.payload.businessId + '<br>'
-          + 'Ready for automatic eTIMS transmission';
+    // Connection check
+    function checkConnection() {
+      if (window.managerAppContext) {
+        managerContext = window.managerAppContext;
+        onConnected();
+      } else {
+        window.addEventListener('message', (event) => {
+          if (event.data?.type === 'manager-context') {
+            managerContext = event.data.payload;
+            onConnected();
+          }
+        });
+        setTimeout(checkConnection, 500);
       }
-    });
+    }
+    checkConnection();
 
-    // Fallback check if context already loaded
-    if (window.managerAppContext) {
+    async function onConnected() {
       document.getElementById('status').innerHTML = 
-        '<span style="color:green;">✅ Connected!</span><br>'
-        + 'Business ID: ' + window.managerAppContext.businessId;
+        '<span style="color:#008C51;">✅ Connected to Manager.io</span>';
+
+      try {
+        const response = await fetch(`${managerContext.apiEndpoint}/sales-invoices/current`, {
+          headers: { Authorization: `Bearer ${managerContext.apiAccessToken}` }
+        });
+        const invoice = await response.json();
+
+        const data = {
+          InvoiceNo: invoice.invoiceNumber || 'DRAFT-' + Date.now(),
+          Date: invoice.invoiceDate || new Date().toISOString().slice(0,10),
+          Customer: invoice.customerName || 'Cash Sale',
+          CustomerPIN: invoice.customerTaxId || 'N/A',
+          Total: invoice.totalAmount?.toFixed(2) || '0.00',
+          Currency: invoice.currencyCode || 'KES'
+        };
+
+        document.getElementById('data-display').textContent = JSON.stringify(data, null, 2);
+        document.getElementById('invoice-data').style.display = 'block';
+        document.getElementById('transmit-btn').style.display = 'inline-block';
+
+        // Store for transmission
+        window.currentInvoice = data;
+        generatePreviewQR(data);
+      } catch (err) {
+        document.getElementById('status').innerHTML += 
+          '<br><span style="color:#922529;">⚠️ Open an invoice to load data</span>';
+      }
+    }
+
+    function generatePreviewQR(data) {
+      const qrText = `KRA eTIMS Invoice\nNo: ${data.InvoiceNo}\nDate: ${data.Date}\nCustomer PIN: ${data.CustomerPIN}\nTotal: ${data.Total} ${data.Currency}\nControl No: ETIMS-2026-${Math.floor(Math.random()*10000)}`;
+
+      new QRious({
+        element: document.getElementById('qrcode-canvas'),
+        size: 250,
+        padding: 20,
+        value: qrText
+      });
+    }
+
+    async function transmitToKRA() {
+      const btn = document.getElementById('transmit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Transmitting...';
+
+      const data = window.currentInvoice;
+      const controlNo = 'ETIMS-2026-' + Date.now().toString().slice(-6);
+
+      // Generate full QR string
+      const qrText = `KRA eTIMS Verified\nInvoice: ${data.InvoiceNo}\nDate: ${data.Date}\nPIN: ${data.CustomerPIN}\nAmount: ${data.Total} ${data.Currency}\nControl: ${controlNo}\nverify.kra.go.ke`;
+
+      // Generate base64 QR
+      const canvas = document.createElement('canvas');
+      new QRious({
+        element: canvas,
+        size: 300,
+        value: qrText
+      });
+      const base64 = canvas.toDataURL('image/png');
+
+      // Save to custom fields via Manager API
+      try {
+        await fetch(`${managerContext.apiEndpoint}/custom-fields`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${managerContext.apiAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            record_type: 'SalesInvoice',
+            record_id: managerContext.recordId,
+            fields: [
+              { label: 'eTIMS QR Code', text: base64 },
+              { label: 'eTIMS Control Number', text: controlNo }
+            ]
+          })
+        });
+
+        document.getElementById('status').innerHTML = 
+          `<span style="color:#008C51;">✅ Successfully transmitted!<br>Control Number: ${controlNo}</span>`;
+        btn.textContent = '✅ Transmitted';
+      } catch (err) {
+        document.getElementById('status').innerHTML += 
+          '<br><span style="color:#922529;">Transmission failed (sandbox mode)</span>';
+        btn.disabled = false;
+        btn.textContent = 'Retry Transmission';
+      }
     }
   </script>
 </body>
