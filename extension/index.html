@@ -1,39 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kenya eTIMS Extension</title>
+  <title>Kenya eTIMS</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-    #status { font-weight: bold; }
-    #qr { margin-top: 20px; }
+    body { font-size: 24px; color: blue; padding: 30px; background: yellow; }
   </style>
-  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
-  <h2>Kenya eTIMS Compliance</h2>
-  <p>Status: <span id="status">Waiting for Manager.io connection...</span></p>
-  <div id="qr"></div>
-
-  <script>
-    // Listen for context from Manager.io
-    window.addEventListener('message', (event) => {
-      if (event.data && event.data.type === 'manager-context') {
-        window.managerContext = event.data.payload;
-        document.getElementById('status').textContent = 'Connected! Business ID: ' + window.managerContext.businessId;
-        
-        // Generate test QR (replace with real KRA data later)
-        QRCode.toCanvas(document.getElementById('qr'), 'Test KRA eTIMS QR Code – Invoice #123', (error) => {
-          if (error) console.error(error);
-        });
-      }
-    });
-
-    // Fallback test QR
-    QRCode.toCanvas(document.getElementById('qr'), 'Loading eTIMS Extension...', (error) => {
-      if (error) console.error(error);
-    });
-  </script>
+  <h1>KENYA eTIMS EXTENSION IS LOADED!</h1>
+  <p>If you see this, it's working. Now we add QR and KRA.</p>
 </body>
 </html>
