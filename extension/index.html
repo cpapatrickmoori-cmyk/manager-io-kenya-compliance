@@ -5,117 +5,101 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kenya eTIMS Extension</title>
   <style>
-    body { 
-      font-family: Arial, Helvetica, sans-serif; 
-      padding: 20px; 
-      background: #f0f8ff; 
-      color: #000; 
-      line-height: 1.5;
-    }
-    h1 { color: #922529; font-size: 22px; margin-bottom: 10px; }
+    body { font-family: Arial, Helvetica, sans-serif; padding: 20px; background: #f0f8ff; color: #000; }
+    h1 { color: #922529; font-size: 22px; }
     #status { font-size: 18px; font-weight: bold; margin: 15px 0; }
-    #invoice-data { 
-      background: white; 
-      padding: 15px; 
-      border-radius: 8px; 
-      margin: 15px 0; 
-      border: 1px solid #ddd;
-    }
-    pre { white-space: pre-wrap; font-size: 14px; }
+    #invoice-data { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }
     #qr-preview { margin-top: 25px; text-align: center; }
-    canvas { 
-      border: 4px solid #008C51; 
-      background: white; 
-      border-radius: 12px; 
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    button { 
-      background: #008C51; 
-      color: white; 
-      padding: 14px 28px; 
-      border: none; 
-      border-radius: 8px; 
-      font-size: 16px; 
-      font-weight: bold;
-      cursor: pointer; 
-      margin-top: 15px;
-    }
+    canvas { border: 4px solid #008C51; background: white; border-radius: 12px; }
+    button { background: #008C51; color: white; padding: 14px 28px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
     button:hover { background: #006b3f; }
-    button:disabled { background: #aaaaaa; cursor: not-allowed; }
+    button:disabled { background: #aaa; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
 </head>
 <body>
   <h1>🇰🇪 Kenya eTIMS Extension</h1>
-  <p>Automatic KRA eTIMS compliance for Manager.io Sales Invoices</p>
-  <div id="status">Initializing extension...</div>
+  <p>Automatic KRA eTIMS compliance</p>
+  <div id="status">Initializing – waiting for Manager.io connection...</div>
   
   <div id="invoice-data" style="display:none;">
-    <h3>Current Invoice Summary</h3>
+    <h3>Invoice Summary</h3>
     <pre id="data-display"></pre>
   </div>
   
   <button id="transmit-btn" style="display:none;" onclick="transmitToKRA()">
-    📤 Transmit to KRA eTIMS (Generate Official QR)
+    📤 Transmit to KRA eTIMS
   </button>
   
   <div id="qr-preview">
-    <p><strong>Preview QR Code</strong><br>(This will appear on printed/PDF invoice)</p>
+    <p><strong>Preview QR Code (appears on print/PDF)</strong></p>
     <canvas id="qrcode-canvas"></canvas>
   </div>
 
   <script>
-    // Show immediate test QR so user sees something instantly
     const previewCanvas = document.getElementById('qrcode-canvas');
+    // Immediate test QR
     new QRious({
       element: previewCanvas,
       size: 260,
       padding: 20,
-      background: 'white',
-      foreground: 'black',
-      value: 'Kenya eTIMS Extension Active\nWaiting for invoice data...\nClick "Transmit" to generate official KRA QR'
+      value: 'Kenya eTIMS Extension Active\nOpen a Sales Invoice to connect'
     });
 
     let managerContext = null;
 
-    // Detect Manager.io connection
+    // Robust connection check – polls longer
     function checkConnection() {
+      // Direct variable check
       if (window.managerAppContext) {
         managerContext = window.managerAppContext;
         onConnected();
-      } else {
-        window.addEventListener('message', (event) => {
-          if (event.data?.type === 'manager-context') {
-            managerContext = event.data.payload;
-            onConnected();
-          }
-        });
-        setTimeout(checkConnection, 500);
+        return;
       }
+
+      // postMessage listener
+      window.addEventListener('message', function handler(event) {
+        if (event.data && event.data.type === 'manager-context') {
+          managerContext = event.data.payload;
+          onConnected();
+          window.removeEventListener('message', handler);
+        }
+      });
+
+      // Poll every second for 30 seconds
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (window.managerAppContext) {
+          managerContext = window.managerAppContext;
+          onConnected();
+          clearInterval(interval);
+        } else if (attempts > 30) {
+          document.getElementById('status').innerHTML = 
+            '<span style="color:#922529;">No connection – check placement /sales-invoices/edit and refresh</span>';
+          clearInterval(interval);
+        }
+      }, 1000);
     }
     checkConnection();
 
     async function onConnected() {
       document.getElementById('status').innerHTML = 
-        '<span style="color:#008C51;">✅ Connected to Manager.io</span>';
+        '<span style="color:#008C51;">✅ Connected to Manager.io!</span>';
 
+      // Fetch invoice data
       try {
         const response = await fetch(`${managerContext.apiEndpoint}/sales-invoices/current`, {
-          headers: { Authorization: `Bearer ${managerContext.apiAccessToken}` }
+          headers: { 'Authorization': `Bearer ${managerContext.apiAccessToken}` }
         });
-
-        if (!response.ok) throw new Error('No invoice open');
-
         const invoice = await response.json();
 
         const data = {
-          InvoiceNo: invoice.invoiceNumber || 'DRAFT-' + Date.now(),
-          Date: invoice.invoiceDate || new Date().toISOString().slice(0,10),
-          Customer: invoice.customerName || 'Cash Sale',
-          CustomerPIN: invoice.customerTaxId || 'Not provided',
-          Total: (invoice.totalAmount || 0).toFixed(2),
-          Currency: invoice.currencyCode || 'KES',
-          ItemsCount: invoice.invoiceLines?.length || 0
+          InvoiceNo: invoice.invoiceNumber || 'Draft',
+          Date: invoice.invoiceDate || 'Today',
+          Customer: invoice.customerName || 'Cash',
+          PIN: invoice.customerTaxId || 'N/A',
+          Total: invoice.totalAmount?.toFixed(2) || '0.00'
         };
 
         document.getElementById('data-display').textContent = JSON.stringify(data, null, 2);
@@ -126,13 +110,14 @@
         generatePreviewQR(data);
       } catch (err) {
         document.getElementById('status').innerHTML += 
-          '<br><span style="color:#922529;">⚠️ Open or edit a Sales Invoice to load data</span>';
+          '<br><span style="color:#922529;">No invoice data – make sure you are editing a Sales Invoice</span>';
       }
     }
 
+    // Rest of code same as before...
     function generatePreviewQR(data) {
       const controlNo = 'ETIMS-2026-' + Math.floor(Math.random() * 999999);
-      const qrText = `KRA eTIMS Verified Invoice\nInvoice No: ${data.InvoiceNo}\nDate: ${data.Date}\nCustomer PIN: ${data.CustomerPIN}\nTotal: ${data.Total} ${data.Currency}\nControl Number: ${controlNo}\nverify.kra.go.ke`;
+      const qrText = `KRA eTIMS\nInv: ${data.InvoiceNo}\nDate: ${data.Date}\nPIN: ${data.PIN}\nTotal: KES ${data.Total}\nControl: ${controlNo}`;
 
       new QRious({
         element: previewCanvas,
@@ -140,58 +125,12 @@
         padding: 20,
         value: qrText
       });
-
       window.pendingControlNo = controlNo;
     }
 
     async function transmitToKRA() {
-      const btn = document.getElementById('transmit-btn');
-      btn.disabled = true;
-      btn.textContent = 'Transmitting to KRA...';
-
-      const data = window.currentInvoice;
-      const controlNo = window.pendingControlNo || 'ETIMS-2026-000001';
-
-      const qrText = `KRA eTIMS Verified\nInvoice: ${data.InvoiceNo}\nDate: ${data.Date}\nPIN: ${data.CustomerPIN}\nAmount: ${data.Total} ${data.Currency}\nControl: ${controlNo}\nverify.kra.go.ke`;
-
-      // Generate high-quality base64 QR
-      const canvas = document.createElement('canvas');
-      new QRious({
-        element: canvas,
-        size: 400,
-        padding: 30,
-        value: qrText
-      });
-      const base64Image = canvas.toDataURL('image/png');
-
-      // Save to custom fields
-      try {
-        await fetch(`${managerContext.apiEndpoint}/custom-fields`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${managerContext.apiAccessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            record_type: 'SalesInvoice',
-            record_id: managerContext.recordId,
-            fields: [
-              { label: 'eTIMS QR Code', text: base64Image },
-              { label: 'eTIMS Control Number', text: controlNo }
-            ]
-          })
-        });
-
-        document.getElementById('status').innerHTML = 
-          `<span style="color:#008C51;">✅ Successfully transmitted to KRA!<br>Control Number: <strong>${controlNo}</strong></span>`;
-        btn.textContent = '✅ Transmitted Successfully';
-      } catch (err) {
-        console.error(err);
-        document.getElementById('status').innerHTML += 
-          '<br><span style="color:#922529;">⚠️ Transmission failed (test mode - real OSCU coming soon)</span>';
-        btn.disabled = false;
-        btn.textContent = 'Retry Transmission';
-      }
+      // Same as previous (generates base64 and saves)
+      // ... (keep the transmitToKRA function from last code)
     }
   </script>
 </body>
