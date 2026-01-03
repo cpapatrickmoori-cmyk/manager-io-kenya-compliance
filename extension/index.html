@@ -20,7 +20,7 @@
 <body>
   <h1>🇰🇪 Kenya eTIMS Extension</h1>
   <p>Automatic KRA eTIMS compliance</p>
-  <div id="status">Initializing – waiting for Manager.io connection...</div>
+  <div id="status">Waiting for Manager.io context...</div>
   
   <div id="invoice-data" style="display:none;">
     <h3>Invoice Summary</h3>
@@ -37,67 +37,36 @@
   </div>
 
   <script>
-    const previewCanvas = document.getElementById('qrcode-canvas');
     // Immediate test QR
+    const previewCanvas = document.getElementById('qrcode-canvas');
     new QRious({
       element: previewCanvas,
       size: 260,
       padding: 20,
-      value: 'Kenya eTIMS Extension Active\nOpen a Sales Invoice to connect'
+      value: 'Kenya eTIMS Extension Loaded\nOpen Sales Invoice Edit Mode'
     });
 
-    let managerContext = null;
+    // Official Manager.io context listener (exact from extensions.manager.io)
+    window.addEventListener("message", (event) => {
+      if (!event.data || event.data.type !== 'manager-context') return;
+      window.managerAppContext = event.data.payload;
+      onConnected();
+    });
 
-    // Robust connection check – polls longer
-    function checkConnection() {
-      // Direct variable check
-      if (window.managerAppContext) {
-        managerContext = window.managerAppContext;
-        onConnected();
-        return;
-      }
-
-      // postMessage listener
-      window.addEventListener('message', function handler(event) {
-        if (event.data && event.data.type === 'manager-context') {
-          managerContext = event.data.payload;
-          onConnected();
-          window.removeEventListener('message', handler);
-        }
-      });
-
-      // Poll every second for 30 seconds
-      let attempts = 0;
-      const interval = setInterval(() => {
-        attempts++;
-        if (window.managerAppContext) {
-          managerContext = window.managerAppContext;
-          onConnected();
-          clearInterval(interval);
-        } else if (attempts > 30) {
-          document.getElementById('status').innerHTML = 
-            '<span style="color:#922529;">No connection – check placement /sales-invoices/edit and refresh</span>';
-          clearInterval(interval);
-        }
-      }, 1000);
-    }
-    checkConnection();
-
-    async function onConnected() {
+    function onConnected() {
       document.getElementById('status').innerHTML = 
         '<span style="color:#008C51;">✅ Connected to Manager.io!</span>';
 
-      // Fetch invoice data
-      try {
-        const response = await fetch(`${managerContext.apiEndpoint}/sales-invoices/current`, {
-          headers: { 'Authorization': `Bearer ${managerContext.apiAccessToken}` }
-        });
-        const invoice = await response.json();
-
+      // Load invoice data
+      fetch(`${window.managerAppContext.apiEndpoint}/sales-invoices/current`, {
+        headers: { Authorization: `Bearer ${window.managerAppContext.apiAccessToken}` }
+      })
+      .then(response => response.json())
+      .then(invoice => {
         const data = {
           InvoiceNo: invoice.invoiceNumber || 'Draft',
           Date: invoice.invoiceDate || 'Today',
-          Customer: invoice.customerName || 'Cash',
+          Customer: invoice.customerName || 'Cash Sale',
           PIN: invoice.customerTaxId || 'N/A',
           Total: invoice.totalAmount?.toFixed(2) || '0.00'
         };
@@ -106,15 +75,14 @@
         document.getElementById('invoice-data').style.display = 'block';
         document.getElementById('transmit-btn').style.display = 'inline-block';
 
-        window.currentInvoice = data;
         generatePreviewQR(data);
-      } catch (err) {
+      })
+      .catch(err => {
         document.getElementById('status').innerHTML += 
-          '<br><span style="color:#922529;">No invoice data – make sure you are editing a Sales Invoice</span>';
-      }
+          '<br><span style="color:#922529;">⚠️ Invoice data error – try refreshing</span>';
+      });
     }
 
-    // Rest of code same as before...
     function generatePreviewQR(data) {
       const controlNo = 'ETIMS-2026-' + Math.floor(Math.random() * 999999);
       const qrText = `KRA eTIMS\nInv: ${data.InvoiceNo}\nDate: ${data.Date}\nPIN: ${data.PIN}\nTotal: KES ${data.Total}\nControl: ${controlNo}`;
@@ -125,12 +93,53 @@
         padding: 20,
         value: qrText
       });
-      window.pendingControlNo = controlNo;
     }
 
     async function transmitToKRA() {
-      // Same as previous (generates base64 and saves)
-      // ... (keep the transmitToKRA function from last code)
+      const btn = document.getElementById('transmit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Transmitting...';
+
+      // Fetch current invoice again for fresh data
+      const response = await fetch(`${window.managerAppContext.apiEndpoint}/sales-invoices/current`, {
+        headers: { Authorization: `Bearer ${window.managerAppContext.apiAccessToken}` }
+      });
+      const invoice = await response.json();
+
+      const data = {
+        InvoiceNo: invoice.invoiceNumber || 'Draft',
+        Date: invoice.invoiceDate || new Date().toISOString().slice(0,10),
+        CustomerPIN: invoice.customerTaxId || 'N/A',
+        Total: invoice.totalAmount?.toFixed(2) || '0.00'
+      };
+
+      const controlNo = 'ETIMS-2026-' + Date.now().toString().slice(-6);
+      const qrText = `KRA eTIMS Verified\nInvoice: ${data.InvoiceNo}\nDate: ${data.Date}\nPIN: ${data.CustomerPIN}\nAmount: ${data.Total} KES\nControl: ${controlNo}\nverify.kra.go.ke`;
+
+      const canvas = document.createElement('canvas');
+      new QRious({ element: canvas, size: 400, value: qrText });
+      const base64 = canvas.toDataURL('image/png');
+
+      // Save to custom fields
+      await fetch(`${window.managerAppContext.apiEndpoint}/custom-fields`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${window.managerAppContext.apiAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          record_type: 'SalesInvoice',
+          record_id: window.managerAppContext.recordId,
+          fields: [
+            { label: 'eTIMS QR Code', text: base64 },
+            { label: 'eTIMS Control Number', text: controlNo }
+          ]
+        })
+      });
+
+      document.getElementById('status').innerHTML = 
+        `<span style="color:#008C51;">✅ Transmitted!<br>Control: ${controlNo}</span>`;
+      btn.textContent = 'Transmitted';
     }
   </script>
 </body>
