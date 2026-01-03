@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Kenya eTIMS Extension</title>
+  <style>body { font-family: Arial; padding: 20px; }</style>
+  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+  <h2>Kenya eTIMS Compliance</h2>
+  <p>Status: <span id="status">Loading...</span></p>
+  <div id="qr"></div>
+
+  <script>
+    // Listen for Manager.io context
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'manager-context') {
+        window.managerContext = event.data.payload;
+        document.getElementById('status').textContent = 'Connected – Ready for invoice';
+      }
+    });
+
+    // Placeholder QR (replace with real transmission)
+    QRCode.toCanvas(document.getElementById('qr'), 'Sample KRA QR – eTIMS Test', (err) => {
+      if (err) console.error(err);
+    });
+  </script>
+</body>
+</html>
